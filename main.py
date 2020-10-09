@@ -3,7 +3,8 @@ import os
 from sys import argv
 
 import docx2pdf
-import img2pdf
+import fitz
+# import img2pdf
 from PIL import Image
 from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
 from fpdf import FPDF
@@ -21,24 +22,24 @@ def convert_doc_to_pdf(doc_file):
     return pdf_file
 
 
-def convert_image_to_pdf(image_file):
-    # filename = '.'.join(image_file.split('.')[:-1])
-    filename, _ = os.path.splitext(image_file)
-    image = Image.open(image_file)
-    if image.mode == 'RGBA':
-        bg = Image.new('RGB', image.size, (255, 255, 255))
-        bg.paste(image, (0, 0), image)
-        bg.save('alpha_removed.png', 'PNG')
-        # os.remove(image_file)
-        image_file = 'alpha_removed.png'
-
-    pdf_file = filename + '.pdf'
-    with open(pdf_file, 'wb') as file:
-        file.write(img2pdf.convert(image_file))
-        if image_file == 'alpha_removed.png':
-            os.remove(image_file)
-
-    return pdf_file
+# def convert_image_to_pdf(image_file):
+#     # filename = '.'.join(image_file.split('.')[:-1])
+#     filename, _ = os.path.splitext(image_file)
+#     image = Image.open(image_file)
+#     if image.mode == 'RGBA':
+#         bg = Image.new('RGB', image.size, (255, 255, 255))
+#         bg.paste(image, (0, 0), image)
+#         bg.save('alpha_removed.png', 'PNG')
+#         # os.remove(image_file)
+#         image_file = 'alpha_removed.png'
+#
+#     pdf_file = filename + '.pdf'
+#     with open(pdf_file, 'wb') as file:
+#         file.write(img2pdf.convert(image_file))
+#         if image_file == 'alpha_removed.png':
+#             os.remove(image_file)
+#
+#     return pdf_file
 
 
 def main():
@@ -68,8 +69,8 @@ def main():
             bookmarks.append((filename, page + 1))
             page += PdfFileReader(file).numPages
         elif extension in ['.png', '.jpg']:
-            file = convert_image_to_pdf(file)
-            converted_files.append(file)
+            # file = convert_image_to_pdf(file)
+            # converted_files.append(file)
             image_files.append(file)
         else:
             merge_list.append(file)
@@ -77,12 +78,41 @@ def main():
             bookmarks.append((filename, page + 1))
             page += PdfFileReader(file).numPages
 
-    for file in image_files:
-        merge_list.append(file)
-        filename, _ = os.path.splitext(file)
-        filename = filename.split('\\')[-1]
-        bookmarks.append((filename, page + 1))
-        page += 1
+    blank_pdf = FPDF(unit='pt', format='letter')
+    for _ in range(len(image_files)):
+        blank_pdf.add_page()
+
+    blank_pdf.output('blank.pdf', 'F')
+
+    with fitz.open('blank.pdf') as document:
+        for i, file in enumerate(image_files):
+            # merge_list.append(file)
+            blank_page = document[i]
+            image = Image.open(file)
+            width, height = image.size
+
+            if height < width * 1.3:
+                x0, x1 = 115, 497
+                h = int(height * 382 / width)
+                y0 = int(396 - h / 2)
+                y1 = 792 - y0
+            else:
+                y0, y1 = 149, 643
+                w = int(width * 494 / height)
+                x0 = int(306 - w / 2)
+                x1 = 612 - x0
+
+            img_rect = fitz.Rect(x0, y0, x1, y1)
+            blank_page.insertImage(img_rect, filename=file)
+
+            filename, _ = os.path.splitext(file)
+            filename = filename.split('\\')[-1]
+            bookmarks.append((filename, page + 1))
+            page += 1
+
+        document.save('image.pdf')
+
+    os.remove('blank.pdf')
 
     toc = FPDF(unit='pt', format='letter')
     toc.add_page()
@@ -97,6 +127,9 @@ def main():
     for file in merge_list:
         merger.append(file, import_bookmarks=False)
 
+    if os.path.exists('image.pdf'):
+        merger.append('image.pdf')
+
     merger.write(merged_file)
     merger.close()
 
@@ -104,6 +137,8 @@ def main():
         os.remove(file)
 
     os.remove('toc.pdf')
+    if os.path.exists('image.pdf'):
+        os.remove('image.pdf')
 
     newWidth, newHeight = 612, 792
 
