@@ -1,0 +1,5 @@
+docx2pdf
+img2pdf
+Pillow
+PyPDF2
+fpdf
